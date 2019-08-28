@@ -3,13 +3,12 @@ package com.nikhildagrawal.pedometer.models;
 public class ActivityDetail {
 
     private int noOfSteps;
-    private String fromDateTime;
-    private String toDateTime;
+    private String date;
 
-    public ActivityDetail(int noOfSteps, String fromDateTime, String toDateTime) {
+
+    public ActivityDetail(int noOfSteps, String date) {
         this.noOfSteps = noOfSteps;
-        this.fromDateTime = fromDateTime;
-        this.toDateTime = toDateTime;
+        this.date = date;
     }
 
     public int getNoOfSteps() {
@@ -20,19 +19,11 @@ public class ActivityDetail {
         this.noOfSteps = noOfSteps;
     }
 
-    public String getFromDateTime() {
-        return fromDateTime;
+    public String getDate() {
+        return date;
     }
 
-    public void setFromDateTime(String fromDateTime) {
-        this.fromDateTime = fromDateTime;
-    }
-
-    public String getToDateTime() {
-        return toDateTime;
-    }
-
-    public void setToDateTime(String toDateTime) {
-        this.toDateTime = toDateTime;
+    public void setDate(String date) {
+        this.date = date;
     }
 }

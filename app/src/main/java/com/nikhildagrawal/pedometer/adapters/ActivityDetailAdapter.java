@@ -40,7 +40,7 @@ public class ActivityDetailAdapter extends RecyclerView.Adapter<ActivityDetailAd
         if(holder!=null){
 
             holder.tvSteps.setText(activityDetailList.get(position).getNoOfSteps()+ " ");
-            holder.tvTo.setText(activityDetailList.get(position).getToDateTime());
+            holder.tvTo.setText(activityDetailList.get(position).getDate());
             holder.iconImage.setImageResource(R.drawable.walk);
         }
 

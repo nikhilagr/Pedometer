@@ -36,6 +36,7 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Date;
+import java.util.GregorianCalendar;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -48,7 +49,8 @@ public class MainActivity extends AppCompatActivity {
     private RecyclerView recyclerView;
     private ToggleButton toggleButton;
     private LinearLayoutManager layoutManager;
-    private List<ActivityDetail> activityDetailList;
+    private List<ActivityDetail> currentList;
+    private List<ActivityDetail> previousList;
     private ActivityDetailAdapter adapter;
 
 
@@ -58,12 +60,13 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
 
-        activityDetailList = new ArrayList<>();
+        currentList = new ArrayList<>();
+        previousList = new ArrayList<>();
         recyclerView = findViewById(R.id.stepsRecyclerView);
         toggleButton = findViewById(R.id.reverseButton);
         layoutManager = new LinearLayoutManager(this);
         recyclerView.setLayoutManager(layoutManager);
-        adapter = new ActivityDetailAdapter(this,activityDetailList);
+        adapter = new ActivityDetailAdapter(MainActivity.this, currentList);
         recyclerView.setAdapter(adapter);
 
         toggleButton.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
@@ -71,12 +74,12 @@ public class MainActivity extends AppCompatActivity {
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
 
                 if(isChecked){
-                    Collections.reverse(activityDetailList);
-                    recyclerView.setAdapter(adapter);
+                    Collections.reverse(previousList);
+                    adapter.notifyDataSetChanged();
 
                 }else{
-                    Collections.reverse(activityDetailList);
-                    recyclerView.setAdapter(adapter);
+                    Collections.reverse(previousList);
+                    adapter.notifyDataSetChanged();
                 }
             }
         });
@@ -104,7 +107,12 @@ public class MainActivity extends AppCompatActivity {
             /**
              * Access data if user has granted permission.
              */
-            accessGoogleFit();
+
+                // Get steps for current day
+                accessGoogleFitForToday();
+
+                // get steps for last 13 days
+                accessGoogleFit();
         }
 
     }
@@ -114,31 +122,114 @@ public class MainActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode == Activity.RESULT_OK) {
             if (requestCode == GOOGLE_FIT_PERMISSIONS_REQUEST_CODE) {
+
+
+                // Get steps for current day
+                accessGoogleFitForToday();
+                // get steps for last 13 days
                 accessGoogleFit();
             }
         }
     }
 
 
-
-    private void accessGoogleFit(){
+    /**
+     * This method counts number of steps for current day. we dont use bucketing here it means no
+     * aggregated data. so the DataReadRequest data differs from that when we use aggregated data.
+     */
+    private void accessGoogleFitForToday(){
 
 
         Calendar calender = Calendar.getInstance();
         calender.setTime(new Date());
 
-        long endTime = calender.getTimeInMillis();
+        // end time for todays step count will be current time.
+        final long endTime = calender.getTimeInMillis();
+
+        calender.set(Calendar.HOUR_OF_DAY, 0);
+        calender.set(Calendar.MINUTE, 0);
+        calender.set(Calendar.SECOND, 0);
+        calender.set(Calendar.MILLISECOND, 0);
+
+        // we update start time to be current day's midnight time.
+       final long startTime = calender.getTimeInMillis();
+
 
         /**
-         * Last 14 days.To get last 2 weeks data.
+         * Create DataReadRequest object. We use read method on builder an not aggregate unlike in
+         * other method.
          */
-        calender.add(Calendar.DAY_OF_YEAR, -14);
+        DataReadRequest readRequest = new DataReadRequest.Builder()
+                .read(DataType.TYPE_STEP_COUNT_DELTA)
+                .setTimeRange(startTime, endTime, TimeUnit.MILLISECONDS)
+                .build();
 
-        long startTime = calender.getTimeInMillis();
+        Fitness.getHistoryClient(this, GoogleSignIn.getLastSignedInAccount(this))
+                .readData(readRequest)
+                .addOnSuccessListener(new OnSuccessListener<DataReadResponse>() {
+
+                    @Override
+                    public void onSuccess(DataReadResponse dataReadResponse) {
+
+                        DateFormat dateFormat = new SimpleDateFormat("EEE, d MMM yyyy");
+
+                        DataSet dataSet = dataReadResponse.getDataSet(DataType.TYPE_STEP_COUNT_DELTA);
+
+                                    int totalsteps = 0;
+                                    List<DataPoint> dataPoints = dataSet.getDataPoints();
+
+                                    for(DataPoint dataPoint: dataPoints){
+                                        int steps = dataPoint.getValue(Field.FIELD_STEPS).asInt();
+                                        totalsteps += steps;
+
+                                    }
+
+                        String calcuDate = dateFormat.format(endTime) + " " ;
+                        ActivityDetail stepDetails = new ActivityDetail(totalsteps,calcuDate);
+                        currentList.add(stepDetails);
+                        adapter.notifyDataSetChanged();
+
+                    }
+                })
+                .addOnFailureListener(new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        Log.e(TAG, "onFailure()", e);
+                    }
+                })
+                .addOnCompleteListener(new OnCompleteListener<DataReadResponse>() {
+                    @Override
+                    public void onComplete(@NonNull Task<DataReadResponse> task) {
+
+                    }
+                });
+    }
+
+
+    /**
+     * Get step counts for last past 13 days. Used bucketing technique here each bucket is of
+     * one day (24 hour). Midnight to midnight.
+     */
+
+    private void accessGoogleFit(){
+
+
+        Calendar calendar = new GregorianCalendar();
+        calendar.set(Calendar.HOUR_OF_DAY, 0);
+        calendar.set(Calendar.MINUTE, 0);
+        calendar.set(Calendar.SECOND, 0);
+        calendar.set(Calendar.MILLISECOND, 0);
+
+        long endTime = calendar.getTime().getTime();
+
+        calendar.add(Calendar.DAY_OF_YEAR,-13);
+
+        long startTime = calendar.getTime().getTime();
+
 
 
         /**
-         * Create DataReadRequest object.
+         * Create DataReadRequest object. Used aggregated data via bucketing technique.
          */
         DataReadRequest readRequest = new DataReadRequest.Builder()
                 .aggregate(DataType.TYPE_STEP_COUNT_DELTA, DataType.AGGREGATE_STEP_COUNT_DELTA)
@@ -155,6 +246,7 @@ public class MainActivity extends AppCompatActivity {
                     public void onSuccess(DataReadResponse dataReadResponse) {
 
 
+
                         DateFormat dateFormat = new SimpleDateFormat("EEE, d MMM yyyy");
                         if (dataReadResponse.getBuckets().size() > 0) {
 
@@ -166,31 +258,27 @@ public class MainActivity extends AppCompatActivity {
 
 
                                     if(dataSet == null || dataSet.isEmpty()){
-                                        activityDetailList.add(new ActivityDetail(0,"",""));
+                                        continue;
                                     }
-
-
 
                                     List<DataPoint> dataPoints = dataSet.getDataPoints();
                                     for(DataPoint dataPoint: dataPoints){
 
-                                        Log.d("datapoint  is: ",dataPoint.getValue(Field.FIELD_STEPS).toString());
 
                                         int steps = dataPoint.getValue(Field.FIELD_STEPS).asInt();
-                                        String from = dateFormat.format(bucket.getStartTime(TimeUnit.MILLISECONDS) ) + " ";
-                                        String to = dateFormat.format(bucket.getEndTime(TimeUnit.MILLISECONDS) ) + " " ;
-
-                                        ActivityDetail stepDetails = new ActivityDetail(steps,from,to);
-                                        activityDetailList.add(stepDetails);
+                                        String  calcuDate = dateFormat.format(bucket.getStartTime(TimeUnit.MILLISECONDS) ) + " ";
+                                        ActivityDetail stepDetails = new ActivityDetail(steps,calcuDate);
+                                        previousList.add(stepDetails);
 
                                     }
-
-                                    recyclerView.setAdapter(adapter);
                                 }
                             }
 
 
-
+                            previousList.addAll(currentList);
+                            Collections.reverse(previousList);
+                            adapter = new ActivityDetailAdapter(MainActivity.this,previousList);
+                            recyclerView.setAdapter(adapter);
 
                         }
                     }
